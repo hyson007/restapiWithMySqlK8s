@@ -1,0 +1,94 @@
+apiVersion: v1
+data:
+  MYSQL_ROOT_PASSWORD: cGFzc3dvcmQ=
+kind: Secret
+metadata:
+  name: my-secret
+  namespace: default
+type: Opaque
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: curlboxstartup
+data:
+  start.sh: |
+    sleep 18
+    echo "Testing API GET with initial data..."
+    curl -sS http://127.0.0.1:5000/api/v1/courses
+    echo "======================================"
+    echo "Testing API POST with some random data..."
+    curl -sS -X POST -H "Content-Type: application/json" -d '{"title": "rust", "duration": 4000, "description": "rust is also good"}' http://127.0.0.1:5000/api/v1/course
+    echo "Testing API GET with updated data..."
+    curl -sS http://127.0.0.1:5000/api/v1/courses
+    echo "======================================"
+    echo "Testing API PUT updating the data we just sent..."
+    curl -sS -X PUT -H "Content-Type: application/json" -d '{"title": "rust", "duration": 4000, "description": "rust is also good with some update"}' http://127.0.0.1:5000/api/v1/course
+    echo "Testing API GET with updated data..."
+    curl -sS http://127.0.0.1:5000/api/v1/courses
+    echo "======================================"
+    echo "Testing API PUT to non-exist data, rightfully they should just be created."
+    curl -sS -X PUT -H "Content-Type: application/json" -d '{"title": "c++", "duration": 5000, "description": "c++ is also good but very hard"}' http://127.0.0.1:5000/api/v1/course
+    echo "Testing API GET with updated data..."
+    curl -sS http://127.0.0.1:5000/api/v1/courses
+    echo "======================================"
+    echo "Testing specific course, the one we just added..."
+    echo "syntax -- curl -sS http://127.0.0.1:5000/api/v1/course/c++"
+    curl -sS http://127.0.0.1:5000/api/v1/course/c++
+    echo "======================================"
+    echo "Testing specific non-exist course"
+    echo "curl -sS http://127.0.0.1:5000/api/v1/course/nextNewLanguage"
+    curl -sS http://127.0.0.1:5000/api/v1/course/nextNewLanguage
+    echo "======================================"
+    echo "Testing API DELETE to specific course, let's delete c++"
+    echo "syntax -- curl -sS -X DELETE http://127.0.0.1:5000/api/v1/course/c++"
+    curl -sS -X DELETE http://127.0.0.1:5000/api/v1/course/c++
+    echo "Forget to set content-type"
+    echo "updated syntax -- curl -sS -X DELETE http://127.0.0.1:5000/api/v1/course/c++ -H 'Content-Type: application/json'"
+    curl -sS -X DELETE http://127.0.0.1:5000/api/v1/course/c++ -H 'Content-Type: application/json'
+    echo "Testing API GET with updated data..."
+    curl -sS http://127.0.0.1:5000/api/v1/courses
+    echo "======================================"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: go
+  name: golangmysql
+spec:
+  volumes:
+  - name: startup
+    configMap:
+      name: curlboxstartup
+      defaultMode: 0777
+  containers:
+  - name: mysql
+    image: mysql:latest
+    env: 
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: my-secret
+              key: MYSQL_ROOT_PASSWORD
+        - name: MYSQL_DATABASE
+          value: my-database
+    ports:
+      - containerPort: 3306
+        name: mysql
+
+  - name: curlbox
+    image: curlimages/curl:latest
+    # command: [ "/bin/sh", "-c", "sleep 3600" ]
+    command: [ "/bin/sh", "-c", "/startup/start.sh"]
+    volumeMounts:
+      - name: startup
+        mountPath: /startup
+        readOnly: true
+
+  - name: golang
+    image: my-golang-app:latest
+    imagePullPolicy: Never
+  initContainers:
+    
+  restartPolicy: Never
